@@ -6,10 +6,10 @@ const RecipeDetail = () => {
   const { id } = useParams();
   const [recipe, setRecipe] = useState(null);
   
-  // State for input forms
+  // State for forms
   const [commentForm, setCommentForm] = useState({ user: '', text: '' });
   const [file, setFile] = useState(null);
-
+  const [customName, setCustomName] = useState(''); // State for custom filename
   const fetchRecipe = () => {
     axios.get(`http://localhost:3000/recipes/${id}`)
       .then(res => setRecipe(res.data))
@@ -23,17 +23,22 @@ const RecipeDetail = () => {
   // --- HANDLER: INSECURE FILE UPLOAD ---
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file) return alert("Pilih file gambar dulu!");
+    if (!file) return alert("Pilih file dulu!");
 
     const formData = new FormData();
-    formData.append('file', file); // Key 'file'
+    formData.append('file', file);
+    // Mengirim nama custom (Vulnerability Point: Path Traversal)
+    if(customName) {
+        formData.append('customName', customName);
+    }
 
     try {
       await axios.post(`http://localhost:3000/recipes/${id}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      alert('✅ Photo uploaded! (Refresh page to see it)');
-      fetchRecipe();
+      alert('✅ Upload Success!');
+      setCustomName('');
+      fetchRecipe(); 
     } catch (err) {
       alert('❌ Upload failed');
     }
@@ -43,20 +48,18 @@ const RecipeDetail = () => {
   const handleComment = async (e) => {
     e.preventDefault();
     try {
-      // Kirim data ke backend (user & text)
       await axios.post(`http://localhost:3000/recipes/${id}/comment`, commentForm);
       setCommentForm({ user: '', text: '' });
-      fetchRecipe(); // Refresh for payload XSS rendering 
+      fetchRecipe(); 
     } catch (err) {
       console.error(err);
     }
   };
 
-  if (!recipe) return <div style={{textAlign:'center', marginTop:'50px'}}>Loading recipes...</div>;
+  if (!recipe) return <div style={{textAlign:'center', marginTop:'50px'}}>Loading...</div>;
 
   return (
     <div>
-      {/* HERO HEADER */}
       <div className="detail-header">
         <img 
           src={recipe.image.startsWith('default') 
@@ -69,24 +72,17 @@ const RecipeDetail = () => {
         <p className="detail-desc">{recipe.description}</p>
       </div>
 
-      {/* INGREDIENTS & STEPS */}
       <div className="recipe-content">
         <div>
           <h3 className="section-title">🥕 Ingredients</h3>
           <ul className="ingredients-list">
-            {recipe.ingredients && recipe.ingredients.map((item, idx) => (
-              <li key={idx}>{item}</li>
-            ))}
-            {!recipe.ingredients && <p>No ingredients data.</p>}
+            {recipe.ingredients && recipe.ingredients.map((item, idx) => <li key={idx}>{item}</li>)}
           </ul>
         </div>
         <div>
           <h3 className="section-title">🔥 Instructions</h3>
           <ol className="steps-list">
-            {recipe.steps && recipe.steps.map((step, idx) => (
-              <li key={idx}>{step}</li>
-            ))}
-            {!recipe.steps && <p>No steps data.</p>}
+            {recipe.steps && recipe.steps.map((step, idx) => <li key={idx}>{step}</li>)}
           </ol>
         </div>
       </div>
@@ -96,15 +92,23 @@ const RecipeDetail = () => {
         <div className="vuln-header">
           <span className="vuln-icon">📸</span>
           <div>
-            <h3>Cooked this? Share your photo!</h3>
+            <h3>Upload Result</h3>
           </div>
         </div>
         
-        <form onSubmit={handleUpload} className="form-row">
+        <form onSubmit={handleUpload} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
           <input 
             type="file" 
             onChange={(e) => setFile(e.target.files[0])} 
             className="input-field"
+          />
+          {/* Input berbahaya tambahan untuk Path Traversal */}
+          <input 
+            type="text" 
+            placeholder="Custom Filename" 
+            className="input-field"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
           />
           <button type="submit" className="btn-primary">UPLOAD</button>
         </form>
@@ -115,11 +119,10 @@ const RecipeDetail = () => {
         <div className="vuln-header">
           <span className="vuln-icon">💬</span>
           <div>
-            <h3>Community Reviews & Tips</h3>
+            <h3>Reviews</h3>
           </div>
         </div>
 
-        {/* Input Form */}
         <form onSubmit={handleComment}>
           <input 
             type="text" 
@@ -130,7 +133,7 @@ const RecipeDetail = () => {
             onChange={e => setCommentForm({...commentForm, user: e.target.value})}
           />
           <textarea 
-            placeholder="Write your review or tips..." 
+            placeholder="Write review..." 
             className="input-field"
             rows="3"
             style={{marginBottom: '10px'}}
@@ -140,7 +143,6 @@ const RecipeDetail = () => {
           <button type="submit" className="btn-primary" style={{width:'100%'}}>POST REVIEW</button>
         </form>
 
-        {/* List Komentar - VULNERABLE RENDERING */}
         <ul className="comment-list">
           {recipe.comments.map((c, index) => (
             <li key={index} className="comment-item">
@@ -148,17 +150,14 @@ const RecipeDetail = () => {
                 <span className="comment-user">{c.user}</span>
                 <span className="comment-date">{c.date}</span>
               </div>
-              {/* dangerouslySetInnerHTML for simulated XSS vulnerability */}
               <div 
                 className="comment-body"
                 dangerouslySetInnerHTML={{ __html: c.text }}
               ></div>
             </li>
           ))}
-          {recipe.comments.length === 0 && <p style={{color:'#aaa', fontStyle:'italic'}}>No reviews yet. Be the first!</p>}
         </ul>
       </div>
-
     </div>
   );
 };
